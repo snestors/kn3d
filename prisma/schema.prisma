@@ -1,0 +1,307 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url = env("POSTGRES_PRISMA_URL")
+  directUrl = env("POSTGRES_URL_NON_POOLING")
+}
+
+// === USUARIOS Y AUTENTICACIÓN ===
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?   // Hash de la contraseña
+  role          UserRole  @default(CUSTOMER)
+  phone         String?
+  address       Json?     // {street, city, state, zipCode, country}
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts Account[]
+  sessions Session[]
+  orders   Order[]
+  cart     CartItem[]
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+enum UserRole {
+  CUSTOMER
+  ADMIN
+  MANAGER
+  OPERATOR
+}
+
+// === PRODUCTOS ===
+model Category {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  slug        String    @unique
+  description String?
+  image       String?
+  parentId    String?
+  parent      Category? @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children    Category[] @relation("CategoryHierarchy")
+  products    Product[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String
+  price       Decimal  @db.Decimal(10, 2)
+  comparePrice Decimal? @db.Decimal(10, 2) // Precio tachado
+  stock       Int      @default(0)
+  minStock    Int      @default(5)
+  sku         String   @unique
+  barcode     String?
+  weight      Decimal? @db.Decimal(8, 3) // kg
+  dimensions  Json?    // {length, width, height} en cm
+  images      String[] // URLs de Vercel Blob
+  tags        String[]
+  isActive    Boolean  @default(true)
+  isFeatured  Boolean  @default(false)
+  
+  categoryId  String
+  category    Category @relation(fields: [categoryId], references: [id])
+  
+  // Campos específicos para impresión 3D
+  material    String?  // PLA, ABS, PETG, etc.
+  color       String?
+  brand       String?
+  diameter    String?  // 1.75mm, 3mm
+  printTemp   String?  // Temperatura de impresión
+  bedTemp     String?  // Temperatura de cama
+  
+  orderItems    OrderItem[]
+  cartItems     CartItem[]
+  productionJobs ProductionJob[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([categoryId])
+  @@index([isActive, isFeatured])
+}
+
+// === CARRITO ===
+model CartItem {
+  id        String   @id @default(cuid())
+  userId    String
+  productId String
+  quantity  Int
+  addedAt   DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+}
+
+// === PEDIDOS ===
+model Order {
+  id              String      @id @default(cuid())
+  orderNumber     String      @unique
+  userId          String
+  status          OrderStatus @default(PENDING)
+  paymentStatus   PaymentStatus @default(PENDING)
+  paymentMethod   String?     // stripe, paypal, transfer, etc.
+  paymentId       String?     // ID de transacción
+  
+  // Información del cliente
+  customerName    String
+  customerEmail   String
+  customerPhone   String?
+  
+  // Dirección de envío
+  shippingAddress Json        // {street, city, state, zipCode, country}
+  billingAddress  Json?       // Si es diferente a shipping
+  
+  // Montos
+  subtotal        Decimal     @db.Decimal(10, 2)
+  shippingCost    Decimal     @db.Decimal(10, 2) @default(0)
+  tax             Decimal     @db.Decimal(10, 2) @default(0)
+  discount        Decimal     @db.Decimal(10, 2) @default(0)
+  total           Decimal     @db.Decimal(10, 2)
+  
+  // Fechas
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  shippedAt       DateTime?
+  deliveredAt     DateTime?
+  
+  // Notas
+  notes           String?
+  internalNotes   String?     // Solo para admin
+  
+  user            User        @relation(fields: [userId], references: [id])
+  items           OrderItem[]
+  productionJobs  ProductionJob[]
+  
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  orderId   String
+  productId String
+  quantity  Int
+  price     Decimal @db.Decimal(10, 2) // Precio al momento de la compra
+  
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+  
+  @@index([orderId])
+}
+
+enum OrderStatus {
+  PENDING       // Pendiente de pago
+  CONFIRMED     // Confirmado y pagado
+  PROCESSING    // En preparación
+  PRODUCTION    // En producción (para items personalizados)
+  SHIPPED       // Enviado
+  DELIVERED     // Entregado
+  CANCELLED     // Cancelado
+  RETURNED      // Devuelto
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+// === INVENTARIO ===
+model Material {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  type        MaterialType
+  supplier    String?
+  stock       Decimal  @db.Decimal(10, 3) // kg o unidades
+  minStock    Decimal  @db.Decimal(10, 3)
+  maxStock    Decimal? @db.Decimal(10, 3)
+  unit        String   @default("kg") // kg, units, meters, etc.
+  costPerUnit Decimal  @db.Decimal(10, 4)
+  location    String?  // Ubicación en almacén
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([type])
+}
+
+enum MaterialType {
+  FILAMENT_PLA
+  FILAMENT_ABS
+  FILAMENT_PETG
+  FILAMENT_TPU
+  RESIN_STANDARD
+  RESIN_TOUGH
+  RESIN_FLEXIBLE
+  HARDWARE      // Tornillos, tuercas, etc.
+  ELECTRONICS   // Componentes electrónicos
+  CONSUMABLES   // Alcohol, papel, etc.
+}
+
+// === PRODUCCIÓN ===
+model ProductionJob {
+  id            String          @id @default(cuid())
+  orderId       String
+  productId     String?         // Puede ser null para trabajos personalizados
+  jobNumber     String          @unique
+  name          String
+  description   String?
+  status        ProductionStatus @default(QUEUED)
+  priority      Int             @default(5) // 1-10, 10 es más alta
+  
+  // Tiempos estimados
+  estimatedHours Decimal?       @db.Decimal(8, 2)
+  actualHours    Decimal?       @db.Decimal(8, 2)
+  
+  // Archivos
+  files         String[]        // URLs de archivos STL, GCODE, etc.
+  
+  // Configuración de impresión
+  printer       String?         // ID o nombre de impresora asignada
+  material      String?         // Material a usar
+  settings      Json?           // Configuraciones específicas
+  
+  // Fechas
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  startedAt     DateTime?
+  completedAt   DateTime?
+  
+  // Notas
+  notes         String?
+  
+  order         Order           @relation(fields: [orderId], references: [id])
+  product       Product?        @relation(fields: [productId], references: [id])
+  
+  @@index([status, priority])
+  @@index([orderId])
+}
+
+enum ProductionStatus {
+  QUEUED        // En cola
+  IN_PROGRESS   // En producción
+  PAUSED        // Pausado
+  COMPLETED     // Completado
+  FAILED        // Falló
+  CANCELLED     // Cancelado
+}
+
+// === CONFIGURACIONES ===
+model Setting {
+  id    String @id @default(cuid())
+  key   String @unique
+  value Json
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

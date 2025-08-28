@@ -187,7 +187,11 @@ export async function POST(request: NextRequest) {
 
     // Calcular totales
     let subtotal = 0
-    const orderItems = []
+    const orderItems: Array<{
+      productId: string
+      quantity: number
+      price: number
+    }> = []
 
     for (const item of items) {
       const product = products.find(p => p.id === item.productId)!

@@ -154,6 +154,11 @@ model Order {
   customerEmail   String
   customerPhone   String?
   
+  // Comprobante de pago (Peru tax compliance)
+  documentType    String?         // boleta, factura
+  documentNumber  String?         // DNI para boleta, RUC para factura
+  businessName    String?         // Razón social para facturas
+  
   // Dirección de envío
   shippingAddress Json        // {street, city, state, zipCode, country}
   billingAddress  Json?       // Si es diferente a shipping

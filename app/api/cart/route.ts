@@ -139,3 +139,33 @@ export async function POST(request: NextRequest) {
     )
   }
 }
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions)
+    
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { error: 'No autenticado' },
+        { status: 401 }
+      )
+    }
+
+    // Limpiar todo el carrito del usuario
+    await prisma.cartItem.deleteMany({
+      where: {
+        userId: session.user.id
+      }
+    })
+
+    return NextResponse.json({
+      message: 'Carrito limpiado exitosamente'
+    })
+  } catch (error) {
+    console.error('Error clearing cart:', error)
+    return NextResponse.json(
+      { error: 'Error interno del servidor' },
+      { status: 500 }
+    )
+  }
+}

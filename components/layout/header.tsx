@@ -125,6 +125,13 @@ export default function Header() {
                       Mi Perfil
                     </Link>
                     <Link
+                      href="/profile/orders"
+                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                      onClick={() => setShowUserMenu(false)}
+                    >
+                      Mis Pedidos
+                    </Link>
+                    <Link
                       href="/cart"
                       className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                       onClick={() => setShowUserMenu(false)}

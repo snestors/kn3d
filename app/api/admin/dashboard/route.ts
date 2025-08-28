@@ -112,8 +112,11 @@ export async function GET(request: NextRequest) {
       totalOrders,
       totalProducts,
       totalUsers,
-      totalRevenue: totalRevenue._sum.total || 0,
-      recentOrders,
+      totalRevenue: totalRevenue._sum.total ? parseFloat(totalRevenue._sum.total.toString()) : 0,
+      recentOrders: recentOrders.map(order => ({
+        ...order,
+        total: parseFloat(order.total.toString())
+      })),
       lowStock: lowStockProducts,
       salesTrend: Math.round(salesTrend * 100) / 100 // Redondear a 2 decimales
     }

@@ -12,6 +12,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Obtener estadísticas en paralelo para mejor rendimiento
+    console.time('Dashboard queries')
     const [
       totalOrders,
       totalProducts,
@@ -79,34 +80,10 @@ export async function GET(request: NextRequest) {
         take: 10
       })
     ])
+    console.timeEnd('Dashboard queries')
 
-    // Calcular tendencia de ventas (simplificado - comparar último mes vs anterior)
-    const lastMonth = new Date()
-    lastMonth.setMonth(lastMonth.getMonth() - 1)
-    
-    const lastMonthOrders = await prisma.order.count({
-      where: {
-        createdAt: {
-          gte: lastMonth
-        }
-      }
-    })
-
-    const previousMonth = new Date()
-    previousMonth.setMonth(previousMonth.getMonth() - 2)
-    
-    const previousMonthOrders = await prisma.order.count({
-      where: {
-        createdAt: {
-          gte: previousMonth,
-          lt: lastMonth
-        }
-      }
-    })
-
-    const salesTrend = previousMonthOrders > 0 
-      ? ((lastMonthOrders - previousMonthOrders) / previousMonthOrders) * 100 
-      : 0
+    // Simplificar - remover tendencias para mejorar performance
+    const salesTrend = 0
 
     const dashboardStats = {
       totalOrders,

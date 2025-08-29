@@ -1,10 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { cache } from '@/lib/cache'
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const includeProducts = searchParams.get('includeProducts') === 'true'
+    const cacheKey = `categories-${includeProducts}`
+
+    // Intentar obtener del cache
+    const cachedCategories = cache.get(cacheKey)
+    if (cachedCategories) {
+      return NextResponse.json(cachedCategories)
+    }
 
     const categories = await prisma.category.findMany({
       include: {
@@ -41,6 +49,9 @@ export async function GET(request: NextRequest) {
       }
     })
 
+    // Guardar en cache por 15 minutos
+    cache.set(cacheKey, categories, 15 * 60 * 1000)
+    
     return NextResponse.json(categories)
   } catch (error) {
     console.error('Error fetching categories:', error)

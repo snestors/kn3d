@@ -19,7 +19,7 @@ interface DashboardStats {
   totalUsers: number
   totalRevenue: number
   recentOrders: any[]
-  lowStock: any[]
+  lowStockCount: number
   salesTrend: number
 }
 
@@ -30,7 +30,7 @@ export default function AdminDashboard() {
     totalUsers: 0,
     totalRevenue: 0,
     recentOrders: [],
-    lowStock: [],
+    lowStockCount: 0,
     salesTrend: 0
   })
   const [loading, setLoading] = useState(true)
@@ -195,34 +195,31 @@ export default function AdminDashboard() {
               </div>
             </div>
             <div className="p-6">
-              {stats.lowStock.length > 0 ? (
-                <div className="space-y-4">
-                  {stats.lowStock.map((product) => (
-                    <div key={product.id} className="flex items-center justify-between py-3 border-b border-gray-100 last:border-b-0">
-                      <div className="flex items-center">
-                        <div className="flex-shrink-0">
-                          <AlertCircle className="h-8 w-8 text-red-400" />
-                        </div>
-                        <div className="ml-3">
-                          <p className="text-sm font-medium text-gray-900">{product.name}</p>
-                          <p className="text-sm text-gray-500">SKU: {product.sku}</p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm font-medium text-red-600">
-                          {product.stock} unidades
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          Min: {product.minStock}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
+              {stats.lowStockCount > 0 ? (
+                <div className="text-center py-8">
+                  <AlertCircle className="h-12 w-12 text-red-400 mx-auto mb-2" />
+                  <p className="text-lg font-medium text-gray-900 mb-1">
+                    {stats.lowStockCount} productos con stock bajo
+                  </p>
+                  <p className="text-sm text-gray-500 mb-4">
+                    Revisa tu inventario para reponerlos
+                  </p>
+                  <a 
+                    href="/admin/inventory" 
+                    className="inline-flex items-center px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition-colors"
+                  >
+                    Ver inventario
+                  </a>
                 </div>
               ) : (
                 <div className="text-center py-8 text-gray-500">
                   <CheckCircle className="h-12 w-12 text-green-400 mx-auto mb-2" />
-                  Stock en niveles normales
+                  <p className="text-lg font-medium text-gray-900 mb-1">
+                    Stock en niveles normales
+                  </p>
+                  <p className="text-sm text-gray-500">
+                    Todos los productos tienen stock suficiente
+                  </p>
                 </div>
               )}
             </div>

@@ -11,15 +11,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Acceso denegado' }, { status: 403 })
     }
 
-    // Obtener estadísticas en paralelo para mejor rendimiento
-    console.time('Dashboard queries')
+    // Obtener estadísticas básicas (optimizado)
+    console.time('Dashboard queries optimized')
     const [
       totalOrders,
       totalProducts,
       totalUsers,
       totalRevenue,
-      recentOrders,
-      lowStockProducts
+      recentOrders
     ] = await Promise.all([
       // Total de pedidos
       prisma.order.count(),
@@ -42,7 +41,7 @@ export async function GET(request: NextRequest) {
         }
       }),
       
-      // Pedidos recientes (últimos 5)
+      // Solo pedidos recientes (más rápido)
       prisma.order.findMany({
         take: 5,
         orderBy: {
@@ -56,31 +55,20 @@ export async function GET(request: NextRequest) {
           status: true,
           createdAt: true
         }
-      }),
-      
-      // Productos con stock bajo (stock <= minStock)
-      prisma.product.findMany({
-        where: {
-          AND: [
-            { isActive: true },
-            {
-              stock: {
-                lte: prisma.product.fields.minStock
-              }
-            }
-          ]
-        },
-        select: {
-          id: true,
-          name: true,
-          sku: true,
-          stock: true,
-          minStock: true
-        },
-        take: 10
       })
     ])
-    console.timeEnd('Dashboard queries')
+    
+    // Stock bajo como consulta separada y opcional
+    const lowStockProducts = await prisma.product.count({
+      where: {
+        isActive: true,
+        stock: {
+          lte: 5 // Hardcoded para mejor performance
+        }
+      }
+    })
+    
+    console.timeEnd('Dashboard queries optimized')
 
     // Simplificar - remover tendencias para mejorar performance
     const salesTrend = 0
@@ -94,7 +82,7 @@ export async function GET(request: NextRequest) {
         ...order,
         total: parseFloat(order.total.toString())
       })),
-      lowStock: lowStockProducts,
+      lowStockCount: lowStockProducts,
       salesTrend: Math.round(salesTrend * 100) / 100 // Redondear a 2 decimales
     }
 

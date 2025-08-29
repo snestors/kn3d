@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { cache } from '@/lib/cache'
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const page = parseInt(searchParams.get('page') || '1')
-    const limit = parseInt(searchParams.get('limit') || '12')
+    const limit = Math.min(parseInt(searchParams.get('limit') || '12'), 50) // Max 50 items
     const category = searchParams.get('category')
     const search = searchParams.get('search')
     const material = searchParams.get('material')
@@ -16,6 +17,17 @@ export async function GET(request: NextRequest) {
     const featured = searchParams.get('featured')
 
     const skip = (page - 1) * limit
+    
+    // Cache key based on all parameters
+    const cacheKey = `products-${JSON.stringify({ page, limit, category, search, material, color, brand, minPrice, maxPrice, featured })}`
+    
+    // Intentar obtener del cache (solo si no hay búsqueda)
+    if (!search || search.length < 2) {
+      const cachedResult = cache.get(cacheKey)
+      if (cachedResult) {
+        return NextResponse.json(cachedResult)
+      }
+    }
 
     // Construir filtros
     const where: any = {
@@ -47,11 +59,23 @@ export async function GET(request: NextRequest) {
       if (maxPrice) where.price.lte = parseFloat(maxPrice)
     }
 
-    // Obtener productos con paginación
+    // Obtener productos con paginación optimizada
     const [products, total] = await Promise.all([
       prisma.product.findMany({
         where,
-        include: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          price: true,
+          comparePrice: true,
+          stock: true,
+          images: true,
+          isFeatured: true,
+          isActive: true,
+          material: true,
+          color: true,
+          brand: true,
           category: {
             select: {
               name: true,
@@ -68,7 +92,7 @@ export async function GET(request: NextRequest) {
       prisma.product.count({ where })
     ])
 
-    return NextResponse.json({
+    const result = {
       products,
       pagination: {
         page,
@@ -76,7 +100,14 @@ export async function GET(request: NextRequest) {
         total,
         pages: Math.ceil(total / limit)
       }
-    })
+    }
+    
+    // Guardar en cache por 5 minutos (solo si no hay búsqueda)
+    if (!search || search.length < 2) {
+      cache.set(cacheKey, result, 5 * 60 * 1000)
+    }
+    
+    return NextResponse.json(result)
   } catch (error) {
     console.error('Error fetching products:', error)
     return NextResponse.json(

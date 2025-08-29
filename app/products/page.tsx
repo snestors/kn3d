@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { formatPrice } from '@/lib/utils'
@@ -35,27 +35,43 @@ export default function ProductsPage() {
   const [loading, setLoading] = useState(true)
   const [selectedCategory, setSelectedCategory] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+
+  // Debounce search term
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm)
+    }, 500) // 500ms delay
+    
+    return () => clearTimeout(timer)
+  }, [searchTerm])
 
   useEffect(() => {
     fetchProducts()
-    fetchCategories()
-  }, [selectedCategory, searchTerm])
+  }, [selectedCategory, debouncedSearch])
 
-  const fetchProducts = async () => {
+  useEffect(() => {
+    fetchCategories()
+  }, [])
+
+  const fetchProducts = useCallback(async () => {
+    setLoading(true)
     try {
       const params = new URLSearchParams()
       if (selectedCategory) params.append('category', selectedCategory)
-      if (searchTerm) params.append('search', searchTerm)
+      if (debouncedSearch) params.append('search', debouncedSearch)
+      params.append('limit', '20') // Limitar resultados
       
       const response = await fetch(`/api/products?${params}`)
       const data = await response.json()
       setProducts(data.products || [])
     } catch (error) {
       console.error('Error fetching products:', error)
+      setProducts([])
     } finally {
       setLoading(false)
     }
-  }
+  }, [selectedCategory, debouncedSearch])
 
   const fetchCategories = async () => {
     try {

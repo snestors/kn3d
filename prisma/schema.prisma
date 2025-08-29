@@ -117,12 +117,88 @@ model Product {
   orderItems    OrderItem[]
   cartItems     CartItem[]
   productionJobs ProductionJob[]
+  variants      ProductVariant[] // Variantes del producto (colores, tamaños, etc.)
   
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   
   @@index([categoryId])
   @@index([isActive, isFeatured])
+}
+
+// Variantes de productos (colores, materiales, tamaños)
+model ProductVariant {
+  id              String   @id @default(cuid())
+  productId       String
+  
+  // Identificación de la variante
+  name            String   // "Dragon Negro", "Dragon Rojo", "Dragon Multicolor"
+  sku             String   @unique
+  
+  // Características específicas
+  color           String?  // "Negro", "Rojo", "Multicolor"
+  material        String?  // "PLA", "ABS", "Resina"
+  size            String?  // "Mini", "Standard", "Large"
+  
+  // Pricing específico por variante
+  basePrice       Decimal  @db.Decimal(10, 2)
+  currentPrice    Decimal  @db.Decimal(10, 2) // Precio actual (puede tener descuentos)
+  
+  // Inventario por variante
+  stock           Int      @default(0)
+  minStock        Int      @default(5)
+  
+  // Especificaciones de producción
+  productionTime  Decimal? @db.Decimal(8, 2) // Horas de producción
+  materialUsage   Json?    // { "PLA_NEGRO": "200g", "SUPPORTS": "50g" }
+  
+  // Configuración de impresión específica
+  printSettings   Json?    // Configuraciones específicas para esta variante
+  
+  // Estado
+  isActive        Boolean  @default(true)
+  isDefault       Boolean  @default(false) // Variante por defecto del producto
+  
+  // Fechas
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // Relaciones
+  product         Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  orderItems      OrderItemVariant[]
+  cartItems       CartItemVariant[]
+  
+  @@index([productId])
+  @@index([isActive])
+  @@index([color])
+  @@index([material])
+}
+
+// Relación mejorada para OrderItem con variantes
+model OrderItemVariant {
+  id          String         @id @default(cuid())
+  orderItemId String
+  variantId   String
+  quantity    Int
+  price       Decimal        @db.Decimal(10, 2) // Precio al momento de la compra
+  
+  orderItem   OrderItem      @relation(fields: [orderItemId], references: [id])
+  variant     ProductVariant @relation(fields: [variantId], references: [id])
+  
+  @@unique([orderItemId, variantId])
+}
+
+// Relación mejorada para CartItem con variantes  
+model CartItemVariant {
+  id         String         @id @default(cuid())
+  cartItemId String
+  variantId  String
+  quantity   Int
+  
+  cartItem   CartItem       @relation(fields: [cartItemId], references: [id])
+  variant    ProductVariant @relation(fields: [variantId], references: [id])
+  
+  @@unique([cartItemId, variantId])
 }
 
 // === CARRITO ===
@@ -135,6 +211,7 @@ model CartItem {
 
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variants CartItemVariant[]
 
   @@unique([userId, productId])
 }
@@ -198,6 +275,7 @@ model OrderItem {
   
   order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product Product @relation(fields: [productId], references: [id])
+  variants OrderItemVariant[]
   
   @@index([orderId])
 }
@@ -221,7 +299,7 @@ enum PaymentStatus {
   PARTIALLY_REFUNDED
 }
 
-// === INVENTARIO ===
+// === INVENTARIO DETALLADO ===
 model Material {
   id          String   @id @default(cuid())
   name        String   @unique
@@ -234,10 +312,133 @@ model Material {
   costPerUnit Decimal  @db.Decimal(10, 4)
   location    String?  // Ubicación en almacén
   
+  // Nuevos campos para trazabilidad
+  sku         String?  @unique // Código del material
+  description String?
+  density     Decimal? @db.Decimal(6, 3) // g/cm³ para cálculos volumétricos
+  
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   
+  // Relaciones nuevas (compatibles)
+  batches     MaterialBatch[]
+  movements   InventoryMovement[]
+  
   @@index([type])
+}
+
+// Lotes/Batches de materiales para trazabilidad
+model MaterialBatch {
+  id            String   @id @default(cuid())
+  materialId    String
+  batchNumber   String   @unique // Número de lote
+  
+  // Información de compra
+  purchaseDate  DateTime
+  supplier      String?
+  invoiceNumber String?
+  
+  // Cantidades y costos
+  originalQty   Decimal  @db.Decimal(10, 3) // Cantidad inicial
+  currentQty    Decimal  @db.Decimal(10, 3) // Cantidad actual
+  unitCost      Decimal  @db.Decimal(10, 4) // Costo por unidad
+  totalCost     Decimal  @db.Decimal(10, 2) // Costo total del lote
+  
+  // Estado del lote
+  isActive      Boolean  @default(true)
+  expiryDate    DateTime? // Fecha de vencimiento si aplica
+  
+  // Trazabilidad
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  // Relaciones
+  material      Material @relation(fields: [materialId], references: [id])
+  movements     InventoryMovement[]
+  
+  @@index([materialId])
+  @@index([isActive])
+}
+
+// Movimientos de inventario detallados
+model InventoryMovement {
+  id              String          @id @default(cuid())
+  
+  // Identificación del movimiento
+  movementNumber  String          @unique
+  type            MovementType
+  reference       String?         // Orden, trabajo, etc.
+  
+  // Material y lote afectado
+  materialId      String
+  batchId         String?         // Lote específico (si aplica)
+  
+  // Cantidades
+  quantity        Decimal         @db.Decimal(10, 3)
+  unitCost        Decimal?        @db.Decimal(10, 4) // Costo unitario en el momento
+  totalCost       Decimal?        @db.Decimal(10, 2) // Costo total del movimiento
+  
+  // Stock después del movimiento
+  stockAfter      Decimal         @db.Decimal(10, 3)
+  
+  // Información adicional
+  notes           String?
+  createdBy       String?         // Usuario que hizo el movimiento
+  
+  // Relación con trabajos de producción
+  productionJobId String?
+  
+  // Fechas
+  movementDate    DateTime        @default(now())
+  createdAt       DateTime        @default(now())
+  
+  // Relaciones
+  material        Material        @relation(fields: [materialId], references: [id])
+  batch           MaterialBatch?  @relation(fields: [batchId], references: [id])
+  productionJob   ProductionJob?  @relation(fields: [productionJobId], references: [id])
+  
+  @@index([materialId])
+  @@index([type])
+  @@index([movementDate])
+}
+
+// Costos de producción detallados
+model ProductionCost {
+  id                String        @id @default(cuid())
+  productionJobId   String        @unique
+  
+  // Costos de materiales (calculado de movimientos)
+  materialCost      Decimal       @db.Decimal(10, 2)
+  materialDetails   Json          // Detalle de materiales usados
+  
+  // Costos operativos
+  machineTimeCost   Decimal       @db.Decimal(8, 2)
+  laborCost         Decimal       @db.Decimal(8, 2)
+  electricityCost   Decimal       @db.Decimal(8, 2)
+  overheadCost      Decimal       @db.Decimal(8, 2)
+  
+  // Totales
+  totalDirectCost   Decimal       @db.Decimal(10, 2)
+  totalCost         Decimal       @db.Decimal(10, 2)
+  
+  // Pricing sugerido
+  suggestedPrice    Decimal?      @db.Decimal(10, 2)
+  profitMargin      Decimal?      @db.Decimal(5, 2) // Porcentaje
+  
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  
+  // Relaciones
+  productionJob     ProductionJob @relation(fields: [productionJobId], references: [id])
+}
+
+enum MovementType {
+  PURCHASE      // Compra/Ingreso
+  CONSUMPTION   // Consumo en producción
+  ADJUSTMENT    // Ajuste de inventario
+  TRANSFER      // Transferencia entre ubicaciones
+  WASTE         // Desperdicio/Merma
+  RETURN        // Devolución
 }
 
 enum MaterialType {
@@ -256,7 +457,7 @@ enum MaterialType {
 // === PRODUCCIÓN ===
 model ProductionJob {
   id            String          @id @default(cuid())
-  orderId       String
+  orderId       String?         // Puede ser null para trabajos de reposición
   productId     String?         // Puede ser null para trabajos personalizados
   jobNumber     String          @unique
   name          String
@@ -285,8 +486,12 @@ model ProductionJob {
   // Notas
   notes         String?
   
-  order         Order           @relation(fields: [orderId], references: [id])
+  order         Order?          @relation(fields: [orderId], references: [id])
   product       Product?        @relation(fields: [productId], references: [id])
+  
+  // Relaciones con inventario y costos
+  inventoryMovements InventoryMovement[]
+  productionCost    ProductionCost?
   
   @@index([status, priority])
   @@index([orderId])
